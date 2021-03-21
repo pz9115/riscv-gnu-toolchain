@@ -1,11 +1,11 @@
 [submodule "riscv-binutils"]
 	path = riscv-binutils
-	url = ../riscv-binutils-gdb.git
-	branch = riscv-binutils-2.35
+	url = https://github.com/pz9115/riscv-binutils-gdb.git
+	branch = riscv-binutils-2.35-k
 [submodule "riscv-gcc"]
 	path = riscv-gcc
-	url = ../riscv-gcc.git
-	branch = riscv-gcc-10.2.0
+	url = https://github.com/WuSiYu/riscv-gcc.git
+	branch = riscv-gcc-10.2.0-crypto
 [submodule "riscv-glibc"]
 	path = riscv-glibc
 	url = ../riscv-glibc.git
@@ -20,8 +20,8 @@
 	branch = master
 [submodule "riscv-gdb"]
 	path = riscv-gdb
-	url = ../riscv-binutils-gdb.git
-	branch = fsf-gdb-10.1-with-sim
+	url = https://github.com/pz9115/riscv-binutils-gdb.git
+	branch = riscv-binutils-2.35-k
 [submodule "qemu"]
 	path = qemu
 	url = https://git.qemu.org/git/qemu.git
