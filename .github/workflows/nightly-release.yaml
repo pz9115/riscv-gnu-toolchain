@@ -48,9 +48,9 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        mode: [newlib, linux, musl]
+        mode: [linux]
         target: [rv32gc-ilp32d, rv64gc-lp64d]
-        compiler: [gcc, llvm]
+        compiler: [gcc]
         exclude:
           - mode: musl
             target: rv32gc-ilp32d
@@ -66,12 +66,18 @@ jobs:
           echo "-- After --"
           df -h
 
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: install apt dependencies
+      - name: Adjust permissions
+        run: |
+          sudo chown -R $USER:$USER $GITHUB_WORKSPACE
+          sudo chmod -R 755 $GITHUB_WORKSPACE
+
+      - name: Install apt dependencies
         run: sudo ./.github/setup-apt.sh
 
-      - name: build toolchain
+      - name: Build toolchain
         run: |
           TARGET_TUPLE=($(echo ${{ matrix.target }} | tr "-" "\n"))
           BUILD_TOOLCHAIN="./configure --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]}"
@@ -82,21 +88,21 @@ jobs:
           fi
           sudo make -j $(nproc) ${{ matrix.mode }}
 
-      - name: build qemu
+      - name: Build qemu
         if: ${{ matrix.mode }} == 'linux'
         run: |
           sudo make -j$(nproc) build-sim SIM=qemu
 
-      - name: recover space
+      - name: Recover space
         run: |
           sudo du -hs / 2> /dev/null || true
           sudo rm -rf binutils dejagnu gcc gdb glibc llvm musl newlib pk qemu spike || true
           sudo du -hs / 2> /dev/null || true
 
-      - name: tarball build
+      - name: Tarball build
         run: tar czvf riscv.tar.gz -C /opt/ riscv/
 
-      - name: generate prebuilt toolchain name
+      - name: Generate prebuilt toolchain name
         id: toolchain-name-generator
         run: |
           if [[ "${{ matrix.target }}" == *"32"* ]]; then BITS=32; else BITS=64; fi
