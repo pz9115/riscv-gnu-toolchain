@@ -81,17 +81,8 @@ jobs:
         run: |
           TARGET_TUPLE=($(echo ${{ matrix.target }} | tr "-" "\n"))
           BUILD_TOOLCHAIN="./configure --prefix=/opt/riscv --with-arch=${TARGET_TUPLE[0]} --with-abi=${TARGET_TUPLE[1]}"
-          if [ "${{ matrix.compiler }}" == "llvm" ]; then # build toolchain with llvm
-            $BUILD_TOOLCHAIN --enable-llvm
-          else
             $BUILD_TOOLCHAIN
-          fi
           sudo make -j $(nproc) ${{ matrix.mode }}
-
-      - name: Build qemu
-        if: ${{ matrix.mode }} == 'linux'
-        run: |
-          sudo make -j$(nproc) build-sim SIM=qemu
 
       - name: Recover space
         run: |
