@@ -44,7 +44,7 @@ jobs:
   build:
     needs: activity-check
     if: needs.activity-check.outputs.stale != 'true'
-    runs-on: [self-hosted, bdc9421ca2b5]
+    runs-on: self-hosted
     strategy:
       matrix:
         os: [ubuntu-22.04]
