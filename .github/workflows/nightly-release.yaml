@@ -50,7 +50,7 @@ jobs:
         os: [ubuntu-22.04]
         mode: [linux]
         target: [rv32gc-ilp32d, rv64gc-lp64d]
-        compiler: gcc
+        compiler: [gcc]
         exclude:
           - mode: musl
             target: rv32gc-ilp32d
