@@ -15,7 +15,7 @@
 	branch = dejagnu-1.6.3
 [submodule "newlib"]
 	path = newlib
-	url = https://git.linaro.org/toolchain/newlib.git
+	url = https://sourceware.org/git/newlib-cygwin.git
 	branch = master
 [submodule "gdb"]
 	path = gdb
