@@ -3,10 +3,55 @@
 import argparse
 import json
 import os
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Any, Tuple, Union
 import requests
+
+REQUEST_TIMEOUT = 30
+REQUEST_RETRIES = 3
+
+
+def dump_bad_response(prefix: str, url: str, response: requests.Response):
+    out = Path(f"{prefix}_bad_response.txt")
+    with out.open("w", encoding="utf-8") as f:
+        f.write(f"URL: {url}\n")
+        f.write(f"Status: {response.status_code}\n")
+        f.write(f"Content-Type: {response.headers.get('content-type', '')}\n")
+        f.write("\n")
+        f.write(response.text[:20000])
+
+
+def get_json_with_retry(url: str, prefix: str):
+    last_err = None
+    for attempt in range(1, REQUEST_RETRIES + 1):
+        try:
+            print(url)
+            r = requests.get(url, timeout=REQUEST_TIMEOUT)
+            print(r.status_code)
+            print(r.headers.get("content-type", ""))
+
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code} for {url}")
+
+            if not r.text.strip():
+                raise RuntimeError(f"Empty response body for {url}")
+
+            try:
+                payload = r.json()
+            except Exception as e:
+                dump_bad_response(prefix, url, r)
+                raise RuntimeError(f"Non-JSON response for {url}: {e}") from e
+
+            return r.headers, payload
+        except Exception as e:
+            last_err = e
+            print(f"Attempt {attempt}/{REQUEST_RETRIES} failed: {e}")
+            if attempt < REQUEST_RETRIES:
+                time.sleep(2)
+
+    raise RuntimeError(f"Request failed after {REQUEST_RETRIES} attempts for {url}: {last_err}")
 
 
 def parse_arguments():
@@ -204,12 +249,8 @@ def parse_patches(
 
 
 def make_api_request(url: str):
-    print(url)
-    r = requests.get(url)
-    print(r.status_code)
-    patches = json.loads(r.text)
-    return patches
-
+    _headers, payload = get_json_with_retry(url, "patchwork")
+    return payload
 
 def get_single_patch_info(url: str, patch_id: Union[str, None] = None):
     patches = make_api_request(url)
@@ -298,19 +339,14 @@ def get_overlap_dict(
 
 
 def make_api_request_and_get_headers(url: str):
-    print(url)
-    r = requests.get(url)
-    print(r.status_code)
-    patches = json.loads(r.text)
-    return r.headers, patches
-
+    return get_json_with_retry(url, "patchwork_page")
 
 def get_patch_info(url: str, all_patches: bool):
     patches: List[Dict[str, Any]] = []
     for page_num in range(1, 10):
         headers, page = make_api_request_and_get_headers(url + f"&page={page_num}")
         patches += page
-        if 'rel="next"' not in headers["Link"]:
+        if 'rel="next"' not in headers.get("Link", ""):
             break
 
     return parse_patches(patches, all_patches=all_patches)
