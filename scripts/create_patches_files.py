@@ -11,7 +11,10 @@ import requests
 
 REQUEST_TIMEOUT = 30
 REQUEST_RETRIES = 3
-
+PATCHWORK_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "gcc-precommit-ci/1.0",
+}
 
 def dump_bad_response(prefix: str, url: str, response: requests.Response):
     out = Path(f"{prefix}_bad_response.txt")
@@ -28,7 +31,11 @@ def get_json_with_retry(url: str, prefix: str):
     for attempt in range(1, REQUEST_RETRIES + 1):
         try:
             print(url)
-            r = requests.get(url, timeout=REQUEST_TIMEOUT)
+            r = requests.get(
+                url,
+                headers=PATCHWORK_HEADERS,
+                timeout=REQUEST_TIMEOUT,
+            )
             print(r.status_code)
             print(r.headers.get("content-type", ""))
 
@@ -52,7 +59,6 @@ def get_json_with_retry(url: str, prefix: str):
                 time.sleep(2)
 
     raise RuntimeError(f"Request failed after {REQUEST_RETRIES} attempts for {url}: {last_err}")
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Create Patch Files")
@@ -356,7 +362,7 @@ def get_multiple_patches(
     start: str, end: str, backup: str, project: int, all_patches: bool
 ):
     """Get all patches within a timeframe"""
-    url = "https://patchwork.sourceware.org/api/1.3/patches/?order=date&project={}&since={}&before={}&per_page=100"
+    url = "https://patchwork.sourceware.org/api/1.3/patches/?order=date&project={}&since={}&before={}&per_page=100&format=json"
 
     print(all_patches)
 
