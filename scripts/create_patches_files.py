@@ -9,6 +9,25 @@ from typing import DefaultDict, Dict, List, Any, Tuple, Union
 import requests
 
 
+def patchwork_filter_emails() -> List[str]:
+    return [
+        email.strip().lower()
+        for email in os.environ.get("PATCHWORK_FILTER_EMAILS", "").split(",")
+        if email.strip()
+    ]
+
+
+def mbox_is_interesting(mbox: str) -> bool:
+    filter_emails = patchwork_filter_emails()
+    for email in filter_emails:
+        print(f"'{email}' in mbox check: {email in mbox}")
+    return (
+        "riscv" in mbox
+        or "risc-v" in mbox
+        or any(email in mbox for email in filter_emails)
+    )
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Create Patch Files")
     parser.add_argument(
@@ -95,8 +114,7 @@ def create_files(
 def check_series_is_interesting(patch: Dict[str, Any]):
     """
     Grep the series mbox file for key terms/email addresses when
-    the individual patch mbox is not found. Example
-    https://github.com/ewlu/gcc-precommit-ci/actions/runs/14332231733/job/40170680741
+    the individual patch mbox is not found.
     """
     r = requests.get(patch["series"][0]["mbox"], timeout=300)  # 5 minutes
     r.encoding = r.apparent_encoding
@@ -104,14 +122,7 @@ def check_series_is_interesting(patch: Dict[str, Any]):
     print(f"series_mbox link: {patch['series'][0]['mbox']}")
     print(f"'riscv' in series_mbox check: {'riscv' in series_mbox}")
     print(f"'risc-v' in series_mbox check: {'risc-v' in series_mbox}")
-    print(
-        f"'patchworks-ci@rivosinc.com' in series_mbox check: {'patchworks-ci@rivosinc.com' in series_mbox}"
-    )
-    return (
-        "riscv" in series_mbox
-        or "risc-v" in series_mbox
-        or "patchworks-ci@rivosinc.com" in series_mbox
-    )
+    return mbox_is_interesting(series_mbox)
 
 
 def interesting_patch(patch: Dict[str, Any]):
@@ -121,14 +132,11 @@ def interesting_patch(patch: Dict[str, Any]):
     r.encoding = r.apparent_encoding
     patch_mbox = r.text.lower()
 
-    # Search for riscv, risc-v, patchworks-ci@rivosinc.com
+    # Search for riscv, risc-v, or configured Patchwork filter mailboxes.
     # mbox is already lowercased
     print(f"patch mbox link: {patch['mbox']}")
     print(f"'riscv' in patch_mbox check: {'riscv' in patch_mbox}")
     print(f"'risc-v' in patch_mbox check: {'risc-v' in patch_mbox}")
-    print(
-        f"'patchworks-ci@rivosinc.com' in patch_mbox check: {'patchworks-ci@rivosinc.com' in patch_mbox}"
-    )
     if "404: file not found - patchwork" in patch_mbox:
         # Skip for now. Will require more work to ensure that the correct link
         # is used. Since interesting_patch is called by parse_patches, by
@@ -138,11 +146,7 @@ def interesting_patch(patch: Dict[str, Any]):
         assert False, f"Patch mbox link {patch['mbox']} not found."
         return check_series_is_interesting(patch)
     else:
-        return (
-            "riscv" in patch_mbox
-            or "risc-v" in patch_mbox
-            or "patchworks-ci@rivosinc.com" in patch_mbox
-        )
+        return mbox_is_interesting(patch_mbox)
 
 
 def parse_patches(

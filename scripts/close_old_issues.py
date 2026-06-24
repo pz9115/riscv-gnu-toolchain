@@ -1,8 +1,15 @@
 import argparse
-import requests
 import json
+import os
 
 from datetime import datetime
+
+import requests
+
+
+DEFAULT_PRECOMMIT_REPOSITORY = os.environ.get(
+    "PRECOMMIT_REPOSITORY", "riseproject-dev/gcc-precommit-ci"
+)
 
 
 def parse_arguments():
@@ -14,17 +21,25 @@ def parse_arguments():
         type=str,
         help="Github access token",
     )
+    parser.add_argument(
+        "-repo",
+        default=DEFAULT_PRECOMMIT_REPOSITORY,
+        type=str,
+        help="GitHub repository containing pre-commit issues to close",
+    )
     return parser.parse_args()
 
 
-def get_issues(token: str):
+def get_issues(token: str, repo: str = DEFAULT_PRECOMMIT_REPOSITORY):
     params = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"token {token}",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    url = f"https://api.github.com/repos/ewlu/gcc-precommit-ci/issues?per_page=100&state=open"
+    url = f"https://api.github.com/repos/{repo}/issues?per_page=100&state=open"
     r = requests.get(url, params)
+    if r.status_code != 200:
+        raise RuntimeError(f"Failed to list open issues from {repo}: HTTP {r.status_code}")
     issues = json.loads(r.text)
     filtered = [issue for issue in issues if "pull_request" not in issue.keys()]
     return filtered
@@ -66,13 +81,13 @@ def check_issue_is_closable(issue):
     return True
 
 
-def close_issue(issue_number: int, token: str):
+def close_issue(issue_number: int, token: str, repo: str = DEFAULT_PRECOMMIT_REPOSITORY):
     params = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"token {token}",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    url = f"https://api.github.com/repos/ewlu/gcc-precommit-ci/issues/{issue_number}"
+    url = f"https://api.github.com/repos/{repo}/issues/{issue_number}"
     data = {"state": "closed"}
     r = requests.patch(url=url, data=json.dumps(data), headers=params)
     print(f"closing issue: {issue_number}")
@@ -82,10 +97,10 @@ def close_issue(issue_number: int, token: str):
 
 def main():
     args = parse_arguments()
-    issues = get_issues(args.token)
+    issues = get_issues(args.token, args.repo)
     for issue in issues:
         if check_issue_is_closable(issue):
-            close_issue(issue["number"], args.token)
+            close_issue(issue["number"], args.token, args.repo)
 
 
 if __name__ == "__main__":

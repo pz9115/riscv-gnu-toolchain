@@ -1,6 +1,8 @@
-import requests
 import argparse
+import os
 from typing import Dict
+
+import requests
 
 
 def parse_arguments():
@@ -87,7 +89,7 @@ def create_data(desc: str, issue: str, rid: str, state: str, context: str, repo:
     data = {
         "state": state,
         "target_url": target_url,
-        "context": f"toolchain-ci-rivos-{context}",
+        "context": f"toolchain-ci-rise-{context}",
         "description": desc,
     }
     return data
@@ -108,6 +110,10 @@ def send(patch_id: str, data: Dict[str, str], headers: Dict[str, str]):
     print(response.text)
 
 
+def patchwork_reporting_enabled():
+    return os.environ.get("PATCHWORK_REPORTING_ENABLED") == "true"
+
+
 def main():
     args = parse_arguments()
     data = create_data(
@@ -121,6 +127,12 @@ def main():
     headers = create_headers(args.token)
     print(f"data: {data}")
     print(args.event_name)
+    if not patchwork_reporting_enabled():
+        print(
+            "PATCHWORK_REPORTING_ENABLED is not exactly 'true'; "
+            "skipping Patchwork check post."
+        )
+        return
     if (
         args.event_name in {"schedule", "workflow_dispatch", "issue_comment"}
         and args.token != "PLACEHOLDER"
