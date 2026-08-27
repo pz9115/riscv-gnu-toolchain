@@ -39,27 +39,71 @@ def issue(title, labels=None, pull_request=False):
 
 
 def test_filter_results_accepts_valid_baseline_issue():
-    assert filter_results(issue(f"Testsuite Status {BASELINE_HASH}"))
+    assert filter_results(
+        issue(f"Testsuite Status {BASELINE_HASH}", labels=["valid-baseline"])
+    )
 
 
 def test_filter_results_rejects_failures_and_pull_requests():
     assert not filter_results(
-        issue(f"Testsuite Status {BASELINE_HASH}", labels=["testsuite-failure"])
+        issue(
+            f"Testsuite Status {BASELINE_HASH}",
+            labels=["valid-baseline", "testsuite-failure"],
+        )
     )
-    assert not filter_results(issue(f"Testsuite Status {BASELINE_HASH}", pull_request=True))
+    assert not filter_results(
+        issue(
+            f"Testsuite Status {BASELINE_HASH}",
+            labels=["valid-baseline"],
+            pull_request=True,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        [],
+        ["valid-baseline", "build-failure"],
+        ["valid-baseline", "testsuite-failure"],
+        ["valid-baseline", "bisect"],
+        ["valid-baseline", "invalid"],
+        ["valid-baseline", "staging"],
+    ],
+)
+def test_filter_results_requires_unshadowed_valid_baseline(labels):
+    assert not filter_results(issue(f"Testsuite Status {BASELINE_HASH}", labels=labels))
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        f"prefix Testsuite Status {BASELINE_HASH}",
+        f"Testsuite Status {BASELINE_HASH} suffix",
+        f"Testsuite  Status {BASELINE_HASH}",
+        f"Testsuite Status {BASELINE_HASH.upper()}",
+    ],
+)
+def test_filter_results_requires_exact_title(title):
+    assert not filter_results(issue(title, labels=["valid-baseline"]))
 
 
 def test_select_baseline_hash_returns_first_valid_issue():
     issues = [
-        issue(f"Testsuite Status {BASELINE_HASH}", labels=["build-failure"]),
-        issue(f"Testsuite Status {BASELINE_HASH}"),
+        issue(
+            f"Testsuite Status {BASELINE_HASH}",
+            labels=["valid-baseline", "build-failure"],
+        ),
+        issue(f"Testsuite Status {BASELINE_HASH}", labels=["valid-baseline"]),
     ]
 
     assert select_baseline_hash(issues) == BASELINE_HASH
 
 
 def test_select_baseline_hash_errors_when_no_valid_issue():
-    with pytest.raises(BaselineLookupError, match="No valid post-commit baseline"):
+    with pytest.raises(
+        BaselineLookupError, match="valid-baseline label.*invalid.*staging"
+    ):
         select_baseline_hash([issue("Coordination Branch Testsuite Status abc")])
 
 
@@ -74,14 +118,20 @@ def test_fetch_issues_uses_requested_repository_and_paginates(monkeypatch):
                 [issue("ignored")],
                 links={"next": {"url": "https://api.github.com/page/2"}},
             )
-        return FakeResponse(200, [issue(f"Testsuite Status {BASELINE_HASH}")])
+        return FakeResponse(
+            200,
+            [issue(f"Testsuite Status {BASELINE_HASH}", labels=["valid-baseline"])],
+        )
 
     monkeypatch.setattr("get_baseline_hash.requests.get", fake_get)
 
     issues = fetch_issues("riseproject-dev/gcc-postcommit-ci", "token")
 
     assert len(issues) == 2
-    assert calls[0][0] == "https://api.github.com/repos/riseproject-dev/gcc-postcommit-ci/issues"
+    assert (
+        calls[0][0]
+        == "https://api.github.com/repos/riseproject-dev/gcc-postcommit-ci/issues"
+    )
     assert calls[0][1] == {"state": "all", "per_page": 100}
     assert calls[1][0] == "https://api.github.com/page/2"
     assert calls[1][1] is None
@@ -100,7 +150,9 @@ def test_fetch_issues_reports_http_errors(monkeypatch):
 def test_parse_baseline_hash_writes_selected_hash(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "get_baseline_hash.fetch_issues",
-        lambda repo, token: [issue(f"Testsuite Status {BASELINE_HASH}")],
+        lambda repo, token: [
+            issue(f"Testsuite Status {BASELINE_HASH}", labels=["valid-baseline"])
+        ],
     )
     output = tmp_path / "baseline.txt"
 

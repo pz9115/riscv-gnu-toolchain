@@ -10,6 +10,15 @@ import requests
 DEFAULT_POSTCOMMIT_REPOSITORY = os.environ.get(
     "POSTCOMMIT_REPOSITORY", "riseproject-dev/gcc-postcommit-ci"
 )
+BASELINE_TITLE_PATTERN = re.compile(r"Testsuite Status ([0-9a-f]{40})")
+REQUIRED_BASELINE_LABEL = "valid-baseline"
+BLOCKED_BASELINE_LABELS = {
+    "build-failure",
+    "testsuite-failure",
+    "bisect",
+    "invalid",
+    "staging",
+}
 
 
 class BaselineLookupError(RuntimeError):
@@ -41,13 +50,13 @@ def parse_arguments():
 
 
 def filter_results(issue):
-    filter_labels = ["build-failure", "testsuite-failure", "bisect"]
     issue_labels = {label["name"] for label in issue.get("labels", [])}
-    labels_check = issue_labels.isdisjoint(filter_labels)
-    title_check = (
-        re.search("^Testsuite Status [0-9a-f]{40}$", issue.get("title", "")) is not None
-    )  # re.search returns None if pattern not found
-    return "pull_request" not in issue and labels_check and title_check
+    return (
+        "pull_request" not in issue
+        and REQUIRED_BASELINE_LABEL in issue_labels
+        and issue_labels.isdisjoint(BLOCKED_BASELINE_LABELS)
+        and BASELINE_TITLE_PATTERN.fullmatch(issue.get("title", "")) is not None
+    )
 
 
 def _github_headers(token: str):
@@ -104,15 +113,15 @@ def select_baseline_hash(issues: Iterable[dict]) -> str:
     if not filtered:
         raise BaselineLookupError(
             "No valid post-commit baseline issue was found. Expected an open or "
-            "closed issue titled 'Testsuite Status <40-hex-gcc-hash>' without "
-            "build-failure, testsuite-failure, or bisect labels."
+            "closed issue titled exactly 'Testsuite Status <40-hex-gcc-hash>' "
+            "with the valid-baseline label and without build-failure, "
+            "testsuite-failure, bisect, invalid, or staging labels."
         )
     issue = filtered[0]
     print(f"Baseline from {issue['title']}")
-    assert (
-        re.search("^Testsuite Status [0-9a-f]{40}$", issue["title"]) is not None
-    )  # re.search returns None if pattern not found
-    return issue["title"].split(" ")[-1]
+    match = BASELINE_TITLE_PATTERN.fullmatch(issue["title"])
+    assert match is not None
+    return match.group(1)
 
 
 def parse_baseline_hash(repo: str, token: str, output: str = "./baseline.txt") -> str:
