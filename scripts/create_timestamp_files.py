@@ -48,16 +48,18 @@ def parse_arguments():
 
 
 def get_workflow_runs(token: str, repo: str, workflow: str):
-    params = {
+    headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"token {token}",
         "X-GitHub-Api-Version": "2022-11-28",
+    }
+    params = {
         "branch": "main",
         "event": "schedule",
         "per_page": 100,
     }
     url = f"https://api.github.com/repos/{repo}/actions/runs"
-    r = requests.get(url, params)
+    r = requests.get(url, headers=headers, params=params)
     if r.status_code >= 500:
         with open("patchwork_down.txt", "w") as f:
             f.write(f"status code: {r.status_code}")

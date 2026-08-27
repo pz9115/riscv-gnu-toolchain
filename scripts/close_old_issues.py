@@ -31,15 +31,18 @@ def parse_arguments():
 
 
 def get_issues(token: str, repo: str = DEFAULT_PRECOMMIT_REPOSITORY):
-    params = {
+    headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"token {token}",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    url = f"https://api.github.com/repos/{repo}/issues?per_page=100&state=open"
-    r = requests.get(url, params)
+    params = {"per_page": 100, "state": "open"}
+    url = f"https://api.github.com/repos/{repo}/issues"
+    r = requests.get(url, headers=headers, params=params)
     if r.status_code != 200:
-        raise RuntimeError(f"Failed to list open issues from {repo}: HTTP {r.status_code}")
+        raise RuntimeError(
+            f"Failed to list open issues from {repo}: HTTP {r.status_code}"
+        )
     issues = json.loads(r.text)
     filtered = [issue for issue in issues if "pull_request" not in issue.keys()]
     return filtered
@@ -81,15 +84,17 @@ def check_issue_is_closable(issue):
     return True
 
 
-def close_issue(issue_number: int, token: str, repo: str = DEFAULT_PRECOMMIT_REPOSITORY):
-    params = {
+def close_issue(
+    issue_number: int, token: str, repo: str = DEFAULT_PRECOMMIT_REPOSITORY
+):
+    headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"token {token}",
         "X-GitHub-Api-Version": "2022-11-28",
     }
     url = f"https://api.github.com/repos/{repo}/issues/{issue_number}"
     data = {"state": "closed"}
-    r = requests.patch(url=url, data=json.dumps(data), headers=params)
+    r = requests.patch(url=url, data=json.dumps(data), headers=headers)
     print(f"closing issue: {issue_number}")
     print(r.status_code)
     print(r.text)
