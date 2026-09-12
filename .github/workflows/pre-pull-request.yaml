@@ -7,6 +7,15 @@ on:
   pull_request:
     branches:
       - build-frequent
+  workflow_dispatch:
+    inputs:
+      run_integration_tests:
+        description: Check production post-commit baseline and artifact access
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   pytest:
@@ -30,7 +39,31 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest test/pytests --github-token ${{ secrets.GITHUB_TOKEN }}
+          pytest test/pytests -m 'not github_token_required'
 
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
+
+  production-integration:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_integration_tests }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check production baseline and artifact access
+        env:
+          RISE_CI_READ_TOKEN: ${{ secrets.RISE_CI_READ_TOKEN }}
+        run: |
+          if [ -z "$RISE_CI_READ_TOKEN" ]; then
+            echo 'Set RISE_CI_READ_TOKEN with read access to post-commit Actions artifacts.' >&2
+            exit 1
+          fi
+          pytest test/pytests -m github_token_required --github-token "$RISE_CI_READ_TOKEN"

@@ -10,7 +10,6 @@ from get_baseline_hash import parse_baseline_hash
 
 
 @pytest.fixture
-@pytest.mark.github_token_required
 def base_hash(github_token):
     base_hash = parse_baseline_hash("riseproject-dev/gcc-postcommit-ci", github_token)
     return base_hash

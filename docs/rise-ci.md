@@ -24,7 +24,7 @@ maintained under RISE ownership without depending on a personal repository.
 
    ```sh
    python scripts/check_migration_guards.py
-   pytest test/pytests
+   pytest test/pytests -m 'not github_token_required'
    pre-commit run --all-files
    ```
 
@@ -36,6 +36,19 @@ maintained under RISE ownership without depending on a personal repository.
 6. Merge and release in dependency order: this repository first, post-commit
    CI second, and pre-commit CI last. Do not publish a parent CI update before
    its referenced toolchain commit is reachable.
+
+Pull-request validation does not need production baseline artifacts or a
+cross-repository token. Some patch-discovery tests read public Patchwork data;
+for an offline run, add
+`--ignore=test/pytests/test_scripts/test_create_patches_files.py`.
+
+After post-commit CI has published a valid baseline and retained artifacts,
+maintainers can manually dispatch `Pre-Pull-Request` with
+`run_integration_tests=true`. Set the toolchain repository's
+`RISE_CI_READ_TOKEN` secret to a RISE service credential with read access to
+post-commit Actions artifacts. The ordinary repository `GITHUB_TOKEN` cannot
+provide this cross-repository artifact access. This optional production check
+is deliberately independent of the checks required to merge the toolchain PR.
 
 ## Repository Configuration
 
@@ -58,12 +71,28 @@ are posted. When it is disabled, `scripts/post_check_to_patchworks.py` does not
 require a token. When it is enabled, a real Patchwork API token is mandatory
 and any non-success response fails the command.
 
+Aggregation marks a report `invalid` if any summary is damaged or a downloaded
+testsuite report lacks its corresponding summary, even if other targets
+completed. Artifact lookup skips expired entries; a failed download reports its
+HTTP status before writing an archive.
+
 ## Patchwork Filtering
 
 Patch discovery continues to read the GCC project on Patchwork. The scripts
 always match RISC-V terms in patch bodies. If maintainers need mailbox-based
 matching, configure `PATCHWORK_FILTER_EMAILS` as a comma-separated list in the
 workflow environment or repository variables.
+
+Overlap recovery only trusts checks from `PATCHWORK_CHECK_USERNAME` in the
+`toolchain-ci-rise-` context namespace. A pending check from this service means
+the patch has already started. With no username configured, shadow discovery
+keeps overlapping patches instead of trusting another service's checks; a patch
+can therefore be included in both adjacent polling windows. Nightly recovery
+still requires an explicit username.
+
+The first scheduled run in a new repository uses the preceding 15 minutes as
+its discovery window, plus the normal 15-minute overlap. Later runs start from
+the previous scheduled run's timestamp, including gaps in polling.
 
 ## Release Policy
 
