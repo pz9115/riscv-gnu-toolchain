@@ -75,13 +75,17 @@ def test_processed_empty_summary_is_valid(monkeypatch, tmp_path):
     assert (tmp_path / "labels.txt").read_text() == ""
 
 
-def run_aggregate(monkeypatch, tmp_path, summary_contents):
+def run_aggregate(monkeypatch, tmp_path, summary_contents, current_logs=()):
     summaries_path = tmp_path / "summaries"
     summaries_path.mkdir()
     failures_path = tmp_path / "current_logs"
     failures_path.mkdir()
-    if summary_contents is not None:
-        (summaries_path / "target-summary.md").write_text(summary_contents)
+    if isinstance(summary_contents, str):
+        summary_contents = {"target-summary.md": summary_contents}
+    for name, contents in (summary_contents or {}).items():
+        (summaries_path / name).write_text(contents)
+    for name in current_logs:
+        (failures_path / name).write_text("testsuite report\n")
     output_path = tmp_path / "testsuite.md"
 
     monkeypatch.setattr(aggregate, "SUMMARIES", str(summaries_path))
@@ -105,5 +109,38 @@ def test_main_marks_missing_or_damaged_summary_input_invalid(monkeypatch, tmp_pa
 
 def test_main_accepts_valid_empty_summary_input(monkeypatch, tmp_path):
     markdown = run_aggregate(monkeypatch, tmp_path, valid_empty_summary())
+
+    assert "labels:" not in markdown
+
+
+def test_main_rejects_mixed_valid_and_damaged_summaries(monkeypatch, tmp_path):
+    markdown = run_aggregate(
+        monkeypatch,
+        tmp_path,
+        {"valid-summary.md": valid_empty_summary(), "broken-summary.md": "# Summary\n"},
+    )
+
+    assert "labels: invalid" in markdown
+    assert (tmp_path / "labels.txt").read_text() == "invalid"
+
+
+def test_main_rejects_missing_summary_for_a_current_log(monkeypatch, tmp_path):
+    markdown = run_aggregate(
+        monkeypatch,
+        tmp_path,
+        {"target-one-report-summary.md": valid_empty_summary()},
+        current_logs=("target-one-report.log", "target-two-report.log"),
+    )
+
+    assert "labels: invalid" in markdown
+
+
+def test_main_accepts_complete_summary_coverage(monkeypatch, tmp_path):
+    markdown = run_aggregate(
+        monkeypatch,
+        tmp_path,
+        {"target-one-report-summary.md": valid_empty_summary()},
+        current_logs=("target-one-report.log",),
+    )
 
     assert "labels:" not in markdown
