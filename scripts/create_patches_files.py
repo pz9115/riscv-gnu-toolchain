@@ -28,6 +28,20 @@ def mbox_is_interesting(mbox: str) -> bool:
     )
 
 
+def has_rise_check(checks: List[Dict[str, Any]]) -> bool:
+    """Only our own checks suppress requeueing the overlap window.
+
+    A pending check means this service already started the patch. Shadow runs
+    without an account configured do not trust checks from another service.
+    """
+    username = os.environ.get("PATCHWORK_CHECK_USERNAME", "").strip()
+    return bool(username) and any(
+        check.get("user", {}).get("username") == username
+        and check.get("context", "").startswith("toolchain-ci-rise-")
+        for check in checks
+    )
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Create Patch Files")
     parser.add_argument(
@@ -369,34 +383,26 @@ def get_overlap_dict(
     print(f"early_patch_check_links: {json.dumps(early_patch_check_links, indent=4)}\n")
     overlap = set(early.keys()).intersection(set(download.keys()))
     print(f"overlap: {overlap}")
-    if len(overlap) != 0:
-        print("found overlap, downloading sections")
-        for series in overlap:
+    for series, links in early_patch_check_links.items():
+        if series in overlap:
             download[series] = [
                 list(early[series][-1]) + list(val) for val in download[series]
             ]
-
-    else:
-        print("No overlap found. Checking if earlier patches were run")
-        for series, links in early_patch_check_links.items():
-            for index, link in enumerate(
-                links[-1]
-            ):  # links[-1] contains all of links for the series
-                check = make_api_request(link.strip())
-                if check == [] or "toolchain-ci" not in json.dumps(check):
+        else:
+            # Each candidate contains its prerequisites followed by the patch
+            # being tested. Only that last patch's checks decide whether to rerun
+            # this candidate; prerequisites need not themselves be interesting.
+            for candidate, check_links in zip(early[series], links, strict=True):
+                check = make_api_request(check_links[-1].strip())
+                if not has_rise_check(check):
                     print(
-                        f"Early patch has not been run. Including in download, {early[series][index]}"
+                        f"Early patch has not been run. Including in download, {candidate}"
                     )
                     if series not in download:
                         download[series] = []
-                    download[series].append(early[series][index])
+                    download[series].append(candidate)
                 else:
-                    print(
-                        f"Early patch has been run. Skipping {early[series][-1][index].strip()}"
-                    )
-                    print(
-                        f"check == []: {check == []}, 'toolchain-ci' in json.dumps(check): {'toolchain-ci' in json.dumps(check)}"
-                    )
+                    print(f"Early patch has been run. Skipping {candidate[-1].strip()}")
 
     print(
         f"after checking overlapping values, download: {json.dumps(download, indent=4)}\n"
@@ -417,7 +423,7 @@ def get_patch_info(url: str, all_patches: bool):
     for page_num in range(1, 10):
         headers, page = make_api_request_and_get_headers(url + f"&page={page_num}")
         patches += page
-        if 'rel="next"' not in headers["Link"]:
+        if 'rel="next"' not in headers.get("Link", ""):
             break
 
     return parse_patches(patches, all_patches=all_patches)
@@ -460,14 +466,10 @@ def get_multiple_patches(
     new_download_links = get_overlap_dict(
         download_links, early_download_links, early_patch_check_links
     )
-    if len(series_name) == 0 and len(new_download_links) != 0:
-        # start -> end period has no patches, but backup -> start period does and since
-        # len(new_download_links) != 0, we know that the previous patches were not run
-        print("No series found in start -> end period, using early series information")
-        series_name = _early_series_name
-        series_url = _early_series_url
-        print(f"series_name: {json.dumps(series_name, indent=4)}\n")
-        print(f"series_url: {json.dumps(series_url, indent=4)}\n")
+    # Recovery can add older series even while this window has unrelated patches.
+    # Keep metadata for both windows, preferring current information on overlap.
+    series_name = {**_early_series_name, **series_name}
+    series_url = {**_early_series_url, **series_url}
     create_files(series_name, series_url, new_download_links, "./patch_urls")
     print("creating patchworks links for multiple patches")
     new_patchworks_links = get_overlap_dict(

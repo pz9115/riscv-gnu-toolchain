@@ -42,6 +42,39 @@ def test_patch_discovery_requires_username_even_when_no_patches(monkeypatch):
         get_patches("start", "end")
 
 
+def test_patch_discovery_accepts_empty_page_without_link(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATCHWORK_CHECK_USERNAME", "rise-ci")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("check_patch_checks.make_api_request", lambda _url: ({}, []))
+
+    get_patches("start", "end")
+
+    assert not (tmp_path / "patch_numbers_to_run.txt").exists()
+
+
+def test_patch_discovery_follows_next_page_until_link_is_absent(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATCHWORK_CHECK_USERNAME", "rise-ci")
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    def fake_request(url):
+        calls.append(url)
+        if len(calls) == 1:
+            return {"Link": '<https://patchwork.example/page/2>; rel="next"'}, [
+                {"id": 1}
+            ]
+        return {}, [{"id": 2}]
+
+    monkeypatch.setattr("check_patch_checks.make_api_request", fake_request)
+    monkeypatch.setattr("check_patch_checks.check_patch", lambda _patch, _user: True)
+
+    get_patches("start", "end")
+
+    assert len(calls) == 2
+    assert "page=2" in calls[1]
+    assert (tmp_path / "patch_numbers_to_run.txt").read_text() == "1 2"
+
+
 def test_check_patch_only_counts_configured_username(monkeypatch):
     monkeypatch.setenv("PATCHWORK_CHECK_USERNAME", "rise-ci")
     install_checks(

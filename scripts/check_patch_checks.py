@@ -84,7 +84,7 @@ def get_patches(start: str, end: str):
         url = f"https://patchwork.sourceware.org/api/1.3/patches/?order=date&q=RISC-V&project=6&since={start}&before={end}&page={page_num}"
         headers, page = make_api_request(url)
         patches += page
-        if 'rel="next"' not in headers["Link"]:
+        if 'rel="next"' not in headers.get("Link", ""):
             break
         page_num += 1
 
